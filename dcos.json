@@ -1,0 +1,42 @@
+{
+    "id":   "zookeeper-sample",
+    "instances":  3,
+    "cpus":  0.5,
+    "mem":  512,
+    "env":
+    {
+        "ochopod_cluster":  "ensemble"
+    },
+    "container":
+    {
+        "type":"DOCKER",
+        "docker":
+        {
+            "forcePullImage":               true,
+            "network":                      "BRIDGE",
+            "image":                        "paugamo/marathon-ec2-zookeeper-sample",
+            "portMappings":
+                [
+                    {
+                        "containerPort":    2181
+                    },
+                    {
+                        "containerPort":    2888
+                    },
+                    {
+                        "containerPort":    3888
+                    },
+                    {
+                        "containerPort":    8080
+                    }
+                ]
+        },
+        "volumes":[
+            {
+                "containerPath":            "/opt/mesosphere",
+                "hostPath":                 "/opt/mesosphere",
+                "mode":                     "RO"
+            }
+        ]
+    }
+}
