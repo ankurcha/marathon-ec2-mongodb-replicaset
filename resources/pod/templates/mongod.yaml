@@ -1,0 +1,34 @@
+systemLog:
+  verbosity: {{logVerbosityLevel}}
+  quiet: true
+  traceAllExceptions: false
+
+operationProfiling:
+  slowOpThresholdMs: {{slowMs}}
+  mode: {{profilingMode}}
+
+processManagement:
+  fork: false
+  pidFilePath: /var/run/mongod.pid
+
+net:
+  port: {{port}}
+
+storage:
+  dbpath: {{dbpath}}
+  journal:
+    enabled: true
+  engine: {{engine}}
+  wiredTiger:
+    engineConfig:
+      cacheSizeGB: {{wiredTiger["engineConfig"]["cacheSizeGB"]}}
+      statisticsLogDelaySecs: {{wiredTiger["engineConfig"]["statisticsLogDelaySecs"]}}
+      journalCompressor: {{wiredTiger["engineConfig"]["journalCompressor"]}}
+      directoryForIndexes: {{wiredTiger["engineConfig"]["directoryForIndexes"]}}
+    collectionConfig:
+      blockCompressor: {{wiredTiger["collectionConfig"]["blockCompressor"]}}
+    indexConfig:
+      prefixCompression: {{wiredTiger["indexConfig"]["prefixCompression"]}}
+
+replication:
+  replSetName: {{replSetName}}

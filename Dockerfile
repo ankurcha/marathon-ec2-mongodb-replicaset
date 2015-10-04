@@ -1,25 +1,20 @@
-FROM autodeskcloud/pod:1.0.2
+FROM ubuntu:14.04
+ENV DEBIAN_FRONTEND noninteractive
 
-#
-# - install jdk8 from oracle
-#
-RUN apt-get update && apt-get install -y python-software-properties software-properties-common
-RUN add-apt-repository ppa:webupd8team/java
-RUN echo oracle-java8-installer shared/accepted-oracle-license-v1-1 select true | /usr/bin/debconf-set-selections
-RUN apt-get update && apt-get install -y oracle-java8-installer
+MAINTAINER Ankur Chauhan
 
-#
-# - setup zk 3.4.6 straight from their mirror
-#
-RUN apt-get -y install wget
-RUN wget -q -O - http://apache.mirrors.pair.com/zookeeper/zookeeper-3.4.6/zookeeper-3.4.6.tar.gz | tar -C /opt -xz
-RUN mkdir /var/lib/zookeeper
+# Install Autodesk ochopod and MongoDB.
+RUN \
+  apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 7F0CEB10 && \
+  echo 'deb http://downloads-distro.mongodb.org/repo/ubuntu-upstart dist 10gen' > /etc/apt/sources.list.d/mongodb.list && \
+  apt-get update && \
+  apt-get install -y mongodb-org curl python python-requests supervisor && \
+  curl https://bootstrap.pypa.io/get-pip.py | python && \
+  pip install git+https://github.com/autodesk-cloud/ochopod.git && \
+  apt-get -y autoremove && \
+  rm -rf /var/lib/apt/lists/* && \
+  mkdir -p /var/lib/mongodb
 
-#
-# - add our spiffy pod script
-# - add the zookeeper supervisor config file
-# - start supervisor
-#
-ADD resources/pod /opt/zookeeper-3.4.6/pod
+ADD resources/pod /opt/mongod/pod
 ADD resources/supervisor /etc/supervisor/conf.d
 CMD /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf
