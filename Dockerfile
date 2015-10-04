@@ -1,4 +1,4 @@
-FROM phusion/baseimage:14.04
+FROM phusion/baseimage:latest
 
 # Install Autodesk ochopod and MongoDB.
 RUN \
