@@ -1,42 +1,24 @@
 {
-    "id":   "zookeeper-sample",
-    "instances":  3,
-    "cpus":  0.5,
-    "mem":  512,
-    "env":
-    {
-        "ochopod_cluster":  "ensemble"
-    },
-    "container":
-    {
-        "type":"DOCKER",
-        "docker":
-        {
-            "forcePullImage":               true,
-            "network":                      "BRIDGE",
-            "image":                        "paugamo/marathon-ec2-zookeeper-sample",
-            "portMappings":
-                [
-                    {
-                        "containerPort":    2181
-                    },
-                    {
-                        "containerPort":    2888
-                    },
-                    {
-                        "containerPort":    3888
-                    },
-                    {
-                        "containerPort":    8080
-                    }
-                ]
-        },
-        "volumes":[
-            {
-                "containerPath":            "/opt/mesosphere",
-                "hostPath":                 "/opt/mesosphere",
-                "mode":                     "RO"
-            }
-        ]
+  "id": "/mongodb/rs0",
+  "instances": 3,
+  "cpus": 2.0,
+  "mem": 4096,
+  "env": {
+    "ochopod_cluster": "mongodb_cluster",
+    "ochopod_namespace": "mongodb.rs0"
+  },
+  "container": {
+    "type": "DOCKER",
+    "docker": {
+      "network": "BRIDGE",
+      "image": "ankurcha/marathon-ec2-mongodb-replicaset",
+      "portMappings": [
+        { "containerPort": 27018 },
+        { "containerPort": 8080 }
+      ],
+      "volumes":[
+        {"containerPath": "/etc/mesos", "hostPath": "/etc/mesos", "mode": "RO"}
+      ]
     }
+  }
 }

@@ -4,7 +4,7 @@
 
 This project is a simple [**Docker**](https://www.docker.com/) container definition that can be launched on
 [**DCOS from Mesosphere**](https://mesosphere.com/). It illustrates how our [**Ochopod**](https://github.com/autodesk-cloud/ochothon)
-technology can be used to manage [**Zookeeper 3.4.6**](http://zookeeper.apache.org) and automatically configure it
+technology can be used to manage [**MongoDB**](https://www.mongodb.org/) and automatically configure it
 into a functional ensemble.
 
 
@@ -23,7 +23,7 @@ Wait a bit for the image to be pulled and you will end up with a 3 nodes ensembl
 Please note the JSON definition used for this example is not binding TCP 2181 to the host machine so you will have to
 see what port it has been remapped to if you want for instance to use this ensemble or send 4-letters commands.
 
-Once you are done playing you can simply destroy the *zookeeper-sample* application.
+Once you are done playing you can simply destroy the */mongodb/rs0* application.
 
 ### Support
 

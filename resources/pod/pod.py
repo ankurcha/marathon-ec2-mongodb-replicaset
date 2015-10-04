@@ -16,6 +16,8 @@
 #
 import logging
 import time
+import json
+import os
 
 from jinja2 import Environment, FileSystemLoader, Template
 from ochopod.bindings.ec2.marathon import Pod
@@ -38,50 +40,48 @@ if __name__ == '__main__':
         sequential = True
 
         def probe(self, cluster):
+            #
+            # - Issue the rs.status() request to get the health of the overall replicaSet
+            # - The goal is to ensure that the replicaSet has
+            #   - One primary (stateStr == 'PRIMARY')
+            #   - All pods added to the replicaSet ( cluster.size - 1 secondaries )
+            #
+            primary = None
+            secondaries = []
+            code, lines = shell("echo 'JSON.stringify(rs.status())' | mongo --host localhost --port 27018 --quiet")
+            assert code == 0, 'failed to connect to local pod (is it dead ?)'
 
-            #
-            # - check each pod and issue a MNTR command
-            # - the goal is to make sure they are all part of the ensemble
-            #
-            leader = None
+            props = json.load(' '.join(lines))
+            members = props['members']
+            assert len(members) == cluster.size, 'All members not present in the replicaSet'
+
             for key, pod in cluster.pods.items():
+                # find pod in `members` - list of dicts
+                pod_mongostr = "%s:%d" % (pod['ip'], pod['ports']['27018'])
+                member = (item for item in members if item["name"] == pod_mongostr).next()
+                assert member, 'unable to find pod #%d in replicaSet' % (pod['seq'])
 
-                ip = pod['ip'] if key != cluster.key else 'localhost'
-                port = pod['ports']['2181'] if key != cluster.key else '2181'
-                code, lines = shell('echo mntr | nc -w 5 %s %s' % (ip, port))
-                assert code == 0, 'failed to connect to pod #%d (is it dead ?)' % pod['seq']
+                state = member['stateStr']
+                assert state in ['PRIMARY', 'SECONDARY'], 'pod #%d -> <%s>' % (pod['seq'], member['stateStr'])
 
-                props = {}
-                for line in lines:
-                    if line:
-                        tokens = line.split('\t')
-                        props[tokens[0]] = ' '.join(tokens[1:])
-
-                assert 'zk_server_state' in props, 'pod #%d -> not serving requests (is zk down ?)' % pod['seq']
-
-                state = props['zk_server_state']
-                assert state in ['leader', 'follower'], 'pod #%d -> <%s>' % (pod['seq'], state)
-                if state == 'leader':
-                    leader = props
-
-            assert leader, 'no leader found ?'
-            assert int(leader['zk_synced_followers']) == cluster.size - 1, '1+ follower not synced'
-            return '%s zk nodes / ~ %s KB' % (leader['zk_znode_count'], leader['zk_approximate_data_size'])
+                if state == 'PRIMARY':
+                    primary = member
+                elif state == 'SECONDARY':
+                    secondaries.append(member)
+            assert primary, 'no primary found ?'
+            assert len(secondaries) == cluster.size - 1, '1+ secondaries not synced'
+            # respond with the members json response
+            return json.dumps(members)
 
     class Strategy(Piped):
 
-        cwd = '/opt/zookeeper-3.4.6'
-
-        strict = True
-
-        check_every = 60.0
-
         pid = None
-
         since = 0.0
 
-        def sanity_check(self, pid):
+        pipe_subprocess = True
+        checks = 3
 
+        def sanity_check(self, pid):
             #
             # - simply use the provided process ID to start counting time
             # - this is a cheap way to measure the sub-process up-time
@@ -96,45 +96,39 @@ if __name__ == '__main__':
             return {'uptime': '%.2f hours (pid %s)' % (lapse, pid)}
 
         def configure(self, cluster):
-
             #
-            # - assign the server/id bindings to enable clustering
-            # - lookup the port mappings for each pod (TCP 2888 and 3888)
-            #
-            peers = {}
-            local = cluster.index + 1
-            for n, key in enumerate(sorted(cluster.pods.keys()), 1):
-                pod = cluster.pods[key]
-                suffix = '%d:%d' % (pod['ports']['2888'], pod['ports']['3888'])
-                peers[n] = '%s:%s' % (pod['ip'], suffix)
-
-            # - set "this" node as 0.0.0.0:2888:3888
-            # - i've observed weird behavior with docker 1.3 where zk can't bind the address if specified
-            #
-            peers[local] = '0.0.0.0:2888:3888'
-            logger.debug('local id #%d, peer configuration ->\n%s' %
-                         (local, '\n'.join(['\t#%d\t-> %s' % (n, mapping) for n, mapping in peers.items()])))
-
-            #
-            # - set our server index
-            #
-            template = Template('{{id}}')
-            with open('/var/lib/zookeeper/myid', 'wb') as f:
-                f.write(template.render(id=local))
-
-            #
-            # - render the zk config template with our peer bindings
+            # - render the mongod config template
             #
             env = Environment(loader=FileSystemLoader(join(dirname(__file__), 'templates')))
-            template = env.get_template('zoo.cfg')
+            template = env.get_template('mongod.yaml')
             mapping = \
                 {
-                    'peers': peers
+                    'logVerbosityLevel': os.getenv('LOG_VERBOSITY', '0'),
+                    'slowMs': os.getenv('SLOW_MS', '1000'),
+                    'profilingMode': os.getenv('PROFILING_MODE', 'off'),
+                    'port': '27018',
+                    'dbpath': os.getenv('MESOS_SANDBOX', '/var/lib/mongodb'),
+                    'engine': os.getenv('ENGINE', 'wiredTiger'),
+                    'wiredTiger': {
+                        'engineConfig': {
+                            'cacheSizeGB': os.getenv('CACHE_SIZE_GB', '2'),
+                            'statisticsLogDelaySecs': os.getenv('STATS_LOG_DELAY_SECS', '0'),
+                            'journalCompressor': os.getenv('JOURNAL_COMPRESSOR', 'snappy'),
+                            'directoryForIndexes': os.getenv('DIRECTORY_FOR_INDEXES', 'false')
+                        },
+                        'collectionConfig': {
+                            'blockCompressor': os.getenv('BLOCK_COMPRESSOR', 'zlib')
+                        },
+                        'indexConfig': {
+                            'prefixCompression': os.getenv('PREFIX_COMPRESSION', 'true')
+                        },
+                        'replSetName': os.getenv('REPLSET_NAME', 'rs0')
+                    }
                 }
 
-            with open('%s/conf/zoo.cfg' % self.cwd, 'wb') as f:
+            with open('/etc/mongod.yaml', 'wb') as f:
                 f.write(template.render(mapping))
 
-            return 'bin/zkServer.sh start-foreground', {'SERVER_JVMFLAGS': '-Xmx2g'}
+            return 'mongod --config /etc/mongod.yaml', {}
 
     Pod().boot(Strategy, model=Model)
