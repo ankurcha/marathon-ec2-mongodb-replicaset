@@ -121,9 +121,9 @@ if __name__ == '__main__':
                         },
                         'indexConfig': {
                             'prefixCompression': os.getenv('PREFIX_COMPRESSION', 'true')
-                        },
-                        'replSetName': os.getenv('REPLSET_NAME', 'rs0')
-                    }
+                        }
+                    },
+                    'replSetName': os.getenv('REPLSET_NAME', 'rs0')
                 }
 
             with open('/etc/mongod.yaml', 'wb') as f:
