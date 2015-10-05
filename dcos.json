@@ -1,25 +1,26 @@
 {
   "id": "/mongodb/rs0",
   "instances": 3,
-  "cpus": 2.0,
-  "mem": 4096,
+  "cpus": 1.0,
+  "mem": 2048,
   "env": {
     "ochopod_cluster": "mongodb_cluster",
-    "ochopod_namespace": "mongodb.rs0"
+    "ochopod_namespace": "mongodb.rs0",
+    "CACHE_SIZE_GB": "1"
   },
   "container": {
     "type": "DOCKER",
     "docker": {
       "network": "BRIDGE",
-      "image": "ankurcha/marathon-ec2-mongodb-replicaset",
+      "image": "ankurcha/marathon-ec2-mongodb-replicaset:1.0.2",
       "forcePullImage": true,
       "portMappings": [
         { "containerPort": 27018 },
         { "containerPort": 8080 }
-      ],
-      "volumes":[
-        {"containerPath": "/etc/mesos", "hostPath": "/etc/mesos", "mode": "RO"}
       ]
-    }
+    },
+    "volumes":[
+      {"containerPath": "/etc/mesos", "hostPath": "/etc/mesos", "mode": "RO"}
+    ]
   }
 }
