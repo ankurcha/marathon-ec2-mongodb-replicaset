@@ -5,7 +5,7 @@ RUN \
   apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 7F0CEB10 && \
   echo 'deb http://repo.mongodb.org/apt/ubuntu trusty/mongodb-org/3.0 multiverse' > /etc/apt/sources.list.d/mongodb-org-3.0.list && \
   apt-get update && \
-  apt-get install -y mongodb-org-server curl python python-requests git supervisor && \
+  apt-get install -y mongodb-org curl python python-requests git supervisor && \
   curl https://bootstrap.pypa.io/get-pip.py | python && pip install git+https://github.com/autodesk-cloud/ochopod.git && \
   apt-get -y remove git && \
   apt-get -y autoremove && \
