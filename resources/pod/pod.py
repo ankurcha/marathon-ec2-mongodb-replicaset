@@ -51,7 +51,7 @@ if __name__ == '__main__':
             code, lines = shell("echo 'JSON.stringify(rs.status())' | mongo --host localhost --port 27018 --quiet")
             assert code == 0, 'failed to connect to local pod (is it dead ?)'
 
-            props = json.load(' '.join(lines))
+            props = json.loads(' '.join(lines))
             members = props['members']
             assert len(members) == cluster.size, 'All members not present in the replicaSet'
 
