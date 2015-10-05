@@ -15,7 +15,7 @@ net:
   port: {{port}}
 
 storage:
-  dbpath: {{dbpath}}
+  dbPath: {{dbPath}}
   journal:
     enabled: true
   engine: {{engine}}

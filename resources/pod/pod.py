@@ -107,7 +107,7 @@ if __name__ == '__main__':
                     'slowMs': os.getenv('SLOW_MS', '1000'),
                     'profilingMode': os.getenv('PROFILING_MODE', 'off'),
                     'port': '27018',
-                    'dbpath': os.getenv('MESOS_SANDBOX', '/var/lib/mongodb'),
+                    'dbPath': os.getenv('MESOS_SANDBOX', '/var/lib/mongodb'),
                     'engine': os.getenv('ENGINE', 'wiredTiger'),
                     'wiredTiger': {
                         'engineConfig': {
