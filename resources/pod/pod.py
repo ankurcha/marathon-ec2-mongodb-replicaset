@@ -39,6 +39,11 @@ if __name__ == '__main__':
 
         sequential = True
 
+        def get_replset(self):
+            code, lines = shell("echo 'JSON.stringify(rs.status())' | mongo --host localhost --port 27018 --quiet")
+            assert code == 0, 'failed to connect to local pod (is it dead ?)'
+            return json.loads(' '.join(lines))
+
         def probe(self, cluster):
             #
             # - Issue the rs.status() request to get the health of the overall replicaSet
@@ -48,13 +53,29 @@ if __name__ == '__main__':
             #
             primary = None
             secondaries = []
-            code, lines = shell("echo 'JSON.stringify(rs.status())' | mongo --host localhost --port 27018 --quiet")
-            assert code == 0, 'failed to connect to local pod (is it dead ?)'
 
-            props = json.loads(' '.join(lines))
-            members = props['members']
+            props = self.get_replset()
+            if 'members' not in props.keys():
+                # we need to performs rs.initiate()
+                rs_name = os.getenv('REPLSET_NAME', 'rs0')
+                rs_config_doc = {'_id': rs_name, 'members': []}
+                for key, pod in cluster.pods.items():
+                    rs_config_doc['members'].append({
+                        '_id': pod['seq'],
+                        'host': "%s:%d" % (pod['ip'], pod['ports']['27018'])
+                    })
+                # configure
+                jsonstr = json.dumps(rs_config_doc)
+                code, _ = shell("echo 'rs.initiate(%s)' | mongo --host localhost --port 27018 --quiet" % jsonstr)
+                assert code == 0, 'Unable to do rs.initiate(%s)' % jsonstr
+                # get replset info
+                props = self.get_replset()
+                members = props['members']
+            else:
+                members = props['members']
             assert len(members) == cluster.size, 'All members not present in the replicaSet'
 
+            # get configuration and get status
             for key, pod in cluster.pods.items():
                 # find pod in `members` - list of dicts
                 pod_mongostr = "%s:%d" % (pod['ip'], pod['ports']['27018'])
