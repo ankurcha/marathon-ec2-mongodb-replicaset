@@ -6,13 +6,14 @@
   "env": {
     "ochopod_cluster": "mongodb_cluster",
     "ochopod_namespace": "mongodb.rs0",
-    "CACHE_SIZE_GB": "1"
+    "CACHE_SIZE_GB": "1",
+    "REPLSET_NAME": "rs0"
   },
   "container": {
     "type": "DOCKER",
     "docker": {
       "network": "BRIDGE",
-      "image": "ankurcha/marathon-ec2-mongodb-replicaset:1.0.2",
+      "image": "ankurcha/marathon-ec2-mongodb-replicaset:1.0.5",
       "forcePullImage": true,
       "portMappings": [
         { "containerPort": 27018 },
