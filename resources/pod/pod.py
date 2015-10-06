@@ -43,7 +43,8 @@ if __name__ == '__main__':
             """
             Executes rs.status() against the localhost mongod
             """
-            code, lines = shell("echo 'JSON.stringify(rs.status())' | mongo localhost:27018")
+            logger.debug("getting replicaset status")
+            code, lines = shell("echo 'JSON.stringify(rs.status())' | mongo localhost:27018 --quiet")
             assert code == 0, 'failed to connect to local pod (is it dead ?)'
             return json.loads(' '.join(lines))
 
@@ -62,8 +63,9 @@ if __name__ == '__main__':
                 })
             # configure
             jsonstr = json.dumps(rs_config_doc)
-            code, _ = shell("echo 'rs.initiate(%s)' | mongo --host localhost --port 27018 --quiet" % jsonstr)
-            assert code == 0, 'Unable to do rs.initiate(%s)' % jsonstr
+            logger.info("initializing replicaset %s", rs_config_doc)
+            code, _ = shell("echo 'rs.initiate(%s)' | mongo localhost:27018 --quiet" % jsonstr)
+            assert code == 0, 'Unable to do rs.initiate(%s)' % rs_config_doc
 
         @staticmethod
         def rs_add(pod):
@@ -73,7 +75,7 @@ if __name__ == '__main__':
             hoststr = "%s:%d" % (pod['ip'], pod['ports']['27018'])
             doc = {'_id': pod['seq'], 'host': hoststr}
             jsonstr = json.dumps(doc)
-            code, _ = shell("echo 'rs.add(%s)' | mongo --host localhost --port 27018 --quiet" % jsonstr)
+            code, _ = shell("echo 'rs.add(%s)' | mongo localhost:27018 --quiet" % jsonstr)
             assert code == 0, 'Unable to do rs.add(%s)' % jsonstr
 
         @staticmethod
@@ -81,12 +83,12 @@ if __name__ == '__main__':
             """
             Remove the given host from replicaset using rs.remove(...)
             """
-            code, _ = shell("echo 'rs.remove(\"%s\")' | mongo --host localhost --port 27018 --quiet" % member['name'])
+            code, _ = shell("echo 'rs.remove(\"%s\")' | mongo localhost:27018 --quiet" % member['name'])
             assert code == 0, 'Unable to do rs.remove(\"%s\")' % member
 
         @staticmethod
         def find_pod_for_member(pods, member):
-            for _, pod in pods.items():
+            for pod in pods:
                 if pod['seq'] == member['_id']:
                     return pod
             return None
@@ -109,16 +111,20 @@ if __name__ == '__main__':
             """
             primary = None
             secondaries = []
-            pods = cluster.pods
+            pods = cluster.pods.values()
             props = self.rs_status()
+            # log pods and replSet status
+            logger.debug("list of pods -> %s", pods)
+            logger.debug("rs.status() -> %s", props)
             if props['ok'] == 0:
                 self.rs_initiate(pods)
                 props = self.rs_status()
                 return json.dumps(props)
             else:
+                logger.debug("Checking status of existing replset")
                 members = props['members']
                 # now add any new pods that have shown up
-                for pod in cluster.pods:
+                for pod in pods:
                     matching_member = self.find_member_for_pod(members, pod)
                     if matching_member is None:
                         logger.info('Adding new pod: %s as a member', pod)
@@ -126,18 +132,19 @@ if __name__ == '__main__':
                     else:
                         # found the member in pod as member
                         logger.debug('Found member matching pod: %s -> %s', pod, matching_member)
-
                 # now remove any members that are no longer in the list of pods
+                members = self.rs_status()['members']
+                logger.info("remove stale pods")
                 for member in members:
                     matching_pod = self.find_pod_for_member(pods, member)
                     if matching_pod is None:
                         logger.info('Removing member %s - pod not present in list', member)
                         self.rs_remove(member)
-                # refetch the replicaset status
+                # refresh the replicaset status
                 props = self.rs_status()
             # get configuration and get status
             members = props['members']
-            for _, pod in pods.items():
+            for pod in pods:
                 member = self.find_member_for_pod(members, pod)
                 assert member, 'unable to find pod: %d is list of members' % (pod['seq'])
                 state = member['state']
