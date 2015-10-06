@@ -28,7 +28,6 @@ from os.path import join, dirname
 
 logger = logging.getLogger('ochopod')
 
-
 if __name__ == '__main__':
 
     class Model(Reactive):
@@ -39,60 +38,121 @@ if __name__ == '__main__':
 
         sequential = True
 
-        def get_replset(self):
-            code, lines = shell("echo 'JSON.stringify(rs.status())' | mongo --host localhost --port 27018 --quiet")
+        @staticmethod
+        def rs_status():
+            """
+            Executes rs.status() against the localhost mongod
+            """
+            code, lines = shell("echo 'JSON.stringify(rs.status())' | mongo localhost:27018")
             assert code == 0, 'failed to connect to local pod (is it dead ?)'
             return json.loads(' '.join(lines))
 
+        @staticmethod
+        def rs_initiate(pods):
+            """
+            Executes rs.initiate(...) against the local mongod. The _id of members is pod['seq'] and
+            host is pod['ip']:pod['ports']['27018']
+            """
+            rs_name = os.getenv('REPLSET_NAME', 'rs0')
+            rs_config_doc = {'_id': rs_name, 'members': []}
+            for pod in pods:
+                rs_config_doc['members'].append({
+                    '_id': pod['seq'],
+                    'host': "%s:%d" % (pod['ip'], pod['ports']['27018'])
+                })
+            # configure
+            jsonstr = json.dumps(rs_config_doc)
+            code, _ = shell("echo 'rs.initiate(%s)' | mongo --host localhost --port 27018 --quiet" % jsonstr)
+            assert code == 0, 'Unable to do rs.initiate(%s)' % jsonstr
+
+        @staticmethod
+        def rs_add(pod):
+            """
+            Add the pod as a replicaset member using rs.add({_id: pod['seq'], host: pod['ip']:pod['ports']['27018']})
+            """
+            hoststr = "%s:%d" % (pod['ip'], pod['ports']['27018'])
+            doc = {'_id': pod['seq'], 'host': hoststr}
+            jsonstr = json.dumps(doc)
+            code, _ = shell("echo 'rs.add(%s)' | mongo --host localhost --port 27018 --quiet" % jsonstr)
+            assert code == 0, 'Unable to do rs.add(%s)' % jsonstr
+
+        @staticmethod
+        def rs_remove(member):
+            """
+            Remove the given host from replicaset using rs.remove(...)
+            """
+            code, _ = shell("echo 'rs.remove(\"%s\")' | mongo --host localhost --port 27018 --quiet" % member['name'])
+            assert code == 0, 'Unable to do rs.remove(\"%s\")' % member
+
+        @staticmethod
+        def find_pod_for_member(pods, member):
+            for _, pod in pods.items():
+                if pod['seq'] == member['_id']:
+                    return pod
+            return None
+
+        @staticmethod
+        def find_member_for_pod(members, pod):
+            for member in members:
+                if member['_id'] == pod['seq']:
+                    return member
+            return None
+
         def probe(self, cluster):
-            #
-            # - Issue the rs.status() request to get the health of the overall replicaSet
-            # - The goal is to ensure that the replicaSet has
-            #   - One primary (stateStr == 'PRIMARY')
-            #   - All pods added to the replicaSet ( cluster.size - 1 secondaries )
-            #
+            """
+            This method looks at the cluster description, reconciles the replicaset configuration
+            and then performs a rs.status() check against all members to ensure that there is at
+            least one primary node and all other nodes are in states <= 5
+            http://docs.mongodb.org/manual/reference/replica-states/
+            :param cluster: Cluster configuration passed by ochopod
+            :return: status string - rs.status() response as json
+            """
             primary = None
             secondaries = []
-
-            props = self.get_replset()
-            if 'members' not in props.keys():
-                # we need to performs rs.initiate()
-                rs_name = os.getenv('REPLSET_NAME', 'rs0')
-                rs_config_doc = {'_id': rs_name, 'members': []}
-                for key, pod in cluster.pods.items():
-                    rs_config_doc['members'].append({
-                        '_id': pod['seq'],
-                        'host': "%s:%d" % (pod['ip'], pod['ports']['27018'])
-                    })
-                # configure
-                jsonstr = json.dumps(rs_config_doc)
-                code, _ = shell("echo 'rs.initiate(%s)' | mongo --host localhost --port 27018 --quiet" % jsonstr)
-                assert code == 0, 'Unable to do rs.initiate(%s)' % jsonstr
-                # get replset info
-                props = self.get_replset()
-                members = props['members']
+            pods = cluster.pods
+            props = self.rs_status()
+            if props['ok'] == 0:
+                self.rs_initiate(pods)
+                props = self.rs_status()
+                return json.dumps(props)
             else:
                 members = props['members']
-            assert len(members) == cluster.size, 'All members not present in the replicaSet'
+                # now add any new pods that have shown up
+                for pod in cluster.pods:
+                    matching_member = self.find_member_for_pod(members, pod)
+                    if matching_member is None:
+                        logger.info('Adding new pod: %s as a member', pod)
+                        self.rs_add(pod)
+                    else:
+                        # found the member in pod as member
+                        logger.debug('Found member matching pod: %s -> %s', pod, matching_member)
 
+                # now remove any members that are no longer in the list of pods
+                for member in members:
+                    matching_pod = self.find_pod_for_member(pods, member)
+                    if matching_pod is None:
+                        logger.info('Removing member %s - pod not present in list', member)
+                        self.rs_remove(member)
+                # refetch the replicaset status
+                props = self.rs_status()
             # get configuration and get status
-            for key, pod in cluster.pods.items():
-                # find pod in `members` - list of dicts
-                pod_mongostr = "%s:%d" % (pod['ip'], pod['ports']['27018'])
-                member = (item for item in members if item["name"] == pod_mongostr).next()
-                assert member, 'unable to find pod #%d in replicaSet' % (pod['seq'])
-
-                state = member['stateStr']
-                assert state in ['PRIMARY', 'SECONDARY'], 'pod #%d -> <%s>' % (pod['seq'], member['stateStr'])
-
-                if state == 'PRIMARY':
+            members = props['members']
+            for _, pod in pods.items():
+                member = self.find_member_for_pod(members, pod)
+                assert member, 'unable to find pod: %d is list of members' % (pod['seq'])
+                state = member['state']
+                assert state <= 5, 'pod #%d -> <%s>' % (pod['seq'], member['stateStr'])
+                if state == 1:
                     primary = member
-                elif state == 'SECONDARY':
+                elif state in [0, 2, 3, 5]:
                     secondaries.append(member)
+            # assert we found a primary
             assert primary, 'no primary found ?'
+            # assert that all nodes other than the primary are either secondaries or are in
             assert len(secondaries) == cluster.size - 1, '1+ secondaries not synced'
             # respond with the members json response
             return json.dumps(members)
+
 
     class Strategy(Piped):
 
@@ -116,7 +176,7 @@ if __name__ == '__main__':
 
             return {'uptime': '%.2f hours (pid %s)' % (lapse, pid)}
 
-        def configure(self, cluster):
+        def initialize(self):
             #
             # - render the mongod config template
             #
@@ -150,6 +210,8 @@ if __name__ == '__main__':
             with open('/etc/mongod.yaml', 'wb') as f:
                 f.write(template.render(mapping))
 
+        def configure(self, cluster):
             return 'mongod --config /etc/mongod.yaml', {}
+
 
     Pod().boot(Strategy, model=Model)
