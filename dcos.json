@@ -23,5 +23,15 @@
     "volumes":[
       {"containerPath": "/etc/mesos", "hostPath": "/etc/mesos", "mode": "RO"}
     ]
-  }
+  },
+  "healthChecks": [
+    {
+      "portIndex": 0,
+      "protocol": "TCP",
+      "gracePeriodSeconds": 240,
+      "intervalSeconds": 30,
+      "timeoutSeconds": 10,
+      "maxConsecutiveFailures": 0
+    }
+  ]
 }
