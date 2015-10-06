@@ -13,7 +13,7 @@
     "type": "DOCKER",
     "docker": {
       "network": "BRIDGE",
-      "image": "ankurcha/marathon-ec2-mongodb-replicaset:1.0.5",
+      "image": "ankurcha/marathon-ec2-mongodb-replicaset:1.1.2",
       "forcePullImage": true,
       "portMappings": [
         { "containerPort": 27018 },
@@ -28,8 +28,8 @@
     {
       "portIndex": 0,
       "protocol": "TCP",
-      "gracePeriodSeconds": 240,
-      "intervalSeconds": 30,
+      "gracePeriodSeconds": 120,
+      "intervalSeconds": 20,
       "timeoutSeconds": 10,
       "maxConsecutiveFailures": 0
     }
