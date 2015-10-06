@@ -13,7 +13,7 @@
     "type": "DOCKER",
     "docker": {
       "network": "BRIDGE",
-      "image": "ankurcha/marathon-ec2-mongodb-replicaset:1.1.2",
+      "image": "ankurcha/marathon-ec2-mongodb-replicaset:latest",
       "forcePullImage": true,
       "portMappings": [
         { "containerPort": 27018 },
